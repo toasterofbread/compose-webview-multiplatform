@@ -134,7 +134,7 @@ class WKNavigationDelegate(
                         decisionHandler(WKNavigationActionPolicy.WKNavigationActionPolicyCancel)
                     }
 
-                    is WebRequestInterceptResult.Redirect -> {
+                    is WebRequestInterceptResult.Modify -> {
                         isRedirect = true
                         interceptResult.request.apply {
                             navigator.loadUrl(this.url, this.headers)

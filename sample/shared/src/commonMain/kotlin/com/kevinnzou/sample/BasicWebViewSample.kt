@@ -80,7 +80,7 @@ internal fun BasicWebViewSample() {
                         }
                         request.headers["info"] = "test"
                         request.url = "https://kotlinlang.org/docs/multiplatform.html"
-                        return WebRequestInterceptResult.Redirect(request)
+                        return WebRequestInterceptResult.Modify(request)
                     }
                 },
         )
