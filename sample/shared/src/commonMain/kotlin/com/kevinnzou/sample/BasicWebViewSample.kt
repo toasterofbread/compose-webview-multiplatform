@@ -71,7 +71,7 @@ internal fun BasicWebViewSample() {
         rememberWebViewNavigator(
             requestInterceptor =
                 object : RequestInterceptor {
-                    override fun onInterceptRequest(
+                    override fun onInterceptUrlRequest(
                         request: WebRequest,
                         navigator: WebViewNavigator,
                     ): WebRequestInterceptResult {
