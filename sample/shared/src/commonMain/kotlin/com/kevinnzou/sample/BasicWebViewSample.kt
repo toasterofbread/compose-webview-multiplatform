@@ -78,7 +78,7 @@ internal fun BasicWebViewSample() {
                         request.let {
                             Logger.i { "Sample onInterceptRequest: $it" }
                         }
-                        return if (request.isForMainFrame && request.url.contains("github")) {
+                        return if (request.url.contains("github")) {
                             WebRequestInterceptResult.Modify(
                                 WebRequest(
                                     url = "https://kotlinlang.org/docs/multiplatform.html",

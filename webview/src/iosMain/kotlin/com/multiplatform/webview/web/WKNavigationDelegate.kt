@@ -104,7 +104,8 @@ class WKNavigationDelegate(
             "Outer decidePolicyForNavigationAction: $url $isRedirect $decidePolicyForNavigationAction ${decidePolicyForNavigationAction.request.allHTTPHeaderFields}"
         }
         if (url != null && !isRedirect &&
-            navigator.requestInterceptor != null
+            navigator.requestInterceptor != null &&
+            decidePolicyForNavigationAction.targetFrame?.mainFrame == true
         ) {
             navigator.requestInterceptor.apply {
                 val request = decidePolicyForNavigationAction.request
@@ -128,7 +129,7 @@ class WKNavigationDelegate(
                         webRequest,
                         navigator,
                     )
-                return when (interceptResult) {
+                when (interceptResult) {
                     is WebRequestInterceptResult.Allow -> {
                         decisionHandler(WKNavigationActionPolicy.WKNavigationActionPolicyAllow)
                     }
