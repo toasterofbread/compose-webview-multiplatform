@@ -33,9 +33,13 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.unit.dp
 import co.touchlab.kermit.Logger
 import com.multiplatform.webview.cookie.Cookie
+import com.multiplatform.webview.request.RequestInterceptor
+import com.multiplatform.webview.request.WebRequest
+import com.multiplatform.webview.request.WebRequestInterceptResult
 import com.multiplatform.webview.util.KLogSeverity
 import com.multiplatform.webview.web.LoadingState
 import com.multiplatform.webview.web.WebView
+import com.multiplatform.webview.web.WebViewNavigator
 import com.multiplatform.webview.web.WebViewState
 import com.multiplatform.webview.web.rememberWebViewNavigator
 import com.multiplatform.webview.web.rememberWebViewState
@@ -63,7 +67,30 @@ internal fun BasicWebViewSample() {
 
         onDispose { }
     }
-    val navigator = rememberWebViewNavigator()
+    val navigator =
+        rememberWebViewNavigator(
+            urlRequestInterceptor = // resourceRequestInterceptor to intercept resource requests
+                object : RequestInterceptor {
+                    override fun onInterceptRequest(
+                        request: WebRequest,
+                        navigator: WebViewNavigator,
+                    ): WebRequestInterceptResult {
+                        request.let {
+                            Logger.i { "Sample onInterceptRequest: $it" }
+                        }
+                        return if (request.url.contains("github")) {
+                            WebRequestInterceptResult.Modify(
+                                WebRequest(
+                                    url = "https://kotlinlang.org/docs/multiplatform.html",
+                                    headers = mutableMapOf("info" to "test"),
+                                ),
+                            )
+                        } else {
+                            WebRequestInterceptResult.Allow
+                        }
+                    }
+                },
+        )
     var textFieldValue by remember(state.lastLoadedUrl) {
         mutableStateOf(state.lastLoadedUrl)
     }
