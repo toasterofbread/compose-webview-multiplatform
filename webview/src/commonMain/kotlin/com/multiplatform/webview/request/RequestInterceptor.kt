@@ -5,8 +5,8 @@ import com.multiplatform.webview.web.WebViewNavigator
 /**
  * Created By Kevin Zou On 2023/11/29
  */
-interface RequestInterceptor {
-    fun onInterceptUrlRequest(
+fun interface RequestInterceptor {
+    fun onInterceptRequest(
         request: WebRequest,
         navigator: WebViewNavigator,
     ): WebRequestInterceptResult

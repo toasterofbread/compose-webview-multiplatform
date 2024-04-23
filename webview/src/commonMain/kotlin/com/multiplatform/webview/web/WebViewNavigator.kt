@@ -25,7 +25,11 @@ import kotlinx.coroutines.withContext
  * @see [rememberWebViewNavigator]
  */
 @Stable
-class WebViewNavigator(val coroutineScope: CoroutineScope, val requestInterceptor: RequestInterceptor? = null) {
+class WebViewNavigator(
+    val coroutineScope: CoroutineScope,
+    val urlRequestInterceptor: RequestInterceptor? = null,
+    val resourceRequestInterceptor: RequestInterceptor? = null
+) {
     /**
      * Sealed class for constraining possible navigation events.
      */
@@ -301,5 +305,6 @@ class WebViewNavigator(val coroutineScope: CoroutineScope, val requestIntercepto
 @Composable
 fun rememberWebViewNavigator(
     coroutineScope: CoroutineScope = rememberCoroutineScope(),
-    requestInterceptor: RequestInterceptor? = null,
-): WebViewNavigator = remember(coroutineScope) { WebViewNavigator(coroutineScope, requestInterceptor) }
+    urlRequestInterceptor: RequestInterceptor? = null,
+    resourceRequestInterceptor: RequestInterceptor? = null
+): WebViewNavigator = remember(coroutineScope) { WebViewNavigator(coroutineScope, urlRequestInterceptor, resourceRequestInterceptor) }

@@ -69,9 +69,9 @@ internal fun BasicWebViewSample() {
     }
     val navigator =
         rememberWebViewNavigator(
-            requestInterceptor =
+            urlRequestInterceptor = // resourceRequestInterceptor to intercept resource requests
                 object : RequestInterceptor {
-                    override fun onInterceptUrlRequest(
+                    override fun onInterceptRequest(
                         request: WebRequest,
                         navigator: WebViewNavigator,
                     ): WebRequestInterceptResult {

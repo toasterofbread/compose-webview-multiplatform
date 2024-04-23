@@ -2,6 +2,7 @@ package com.multiplatform.webview.web
 
 import com.multiplatform.webview.request.WebRequest
 import com.multiplatform.webview.request.WebRequestInterceptResult
+import com.multiplatform.webview.request.RequestInterceptor
 import com.multiplatform.webview.util.KLogger
 import dev.datlag.kcef.KCEFBrowser
 import org.cef.CefSettings
@@ -10,7 +11,9 @@ import org.cef.browser.CefFrame
 import org.cef.handler.CefDisplayHandler
 import org.cef.handler.CefLoadHandler
 import org.cef.handler.CefRequestHandlerAdapter
+import org.cef.handler.CefResourceRequestHandlerAdapter
 import org.cef.network.CefRequest
+import org.cef.misc.BoolRef
 import kotlin.math.abs
 import kotlin.math.ln
 
@@ -173,7 +176,7 @@ internal fun KCEFBrowser.addRequestHandler(
                 userGesture: Boolean,
                 isRedirect: Boolean,
             ): Boolean {
-                navigator.requestInterceptor?.apply {
+                navigator.urlRequestInterceptor?.apply {
                     val map = mutableMapOf<String, String>()
                     request?.getHeaderMap(map)
                     KLogger.d { "onBeforeBrowse ${request?.url} $map" }
@@ -186,7 +189,7 @@ internal fun KCEFBrowser.addRequestHandler(
                             request?.method ?: "GET",
                         )
                     val interceptResult =
-                        this.onInterceptUrlRequest(
+                        this.onInterceptRequest(
                             webRequest,
                             navigator,
                         )
@@ -208,6 +211,59 @@ internal fun KCEFBrowser.addRequestHandler(
                     }
                 }
                 return super.onBeforeBrowse(browser, frame, request, userGesture, isRedirect)
+            }
+
+            override fun getResourceRequestHandler(
+                browser: CefBrowser,
+                frame: CefFrame,
+                request: CefRequest,
+                isNavigation: Boolean,
+                isDownload: Boolean,
+                requestInitiator: String,
+                disableDefaultHandling: BoolRef
+            ) = object : CefResourceRequestHandlerAdapter() {
+                override fun onBeforeResourceLoad(
+                    browser: CefBrowser,
+                    frame: CefFrame,
+                    request: CefRequest
+                ): Boolean {
+                    if (request != null) {
+                        state.webSettings.customUserAgentString?.let(request::setUserAgentString)
+                    }
+
+                    val interceptor: RequestInterceptor = navigator.resourceRequestInterceptor ?: return false
+
+                    val headers_map: MutableMap<String, String> = mutableMapOf()
+                    request?.getHeaderMap(headers_map)
+
+                    val webRequest: WebRequest =
+                        WebRequest(
+                            request?.url.toString(),
+                            headers_map,
+                            isForMainFrame = frame?.isMain ?: false,
+                            isRedirect = false,
+                            request?.method ?: "GET",
+                        )
+
+                    val interceptResult: WebRequestInterceptResult = interceptor.onInterceptRequest(webRequest, navigator)
+
+                    return when (interceptResult) {
+                        is WebRequestInterceptResult.Allow -> {
+                            false
+                        }
+
+                        is WebRequestInterceptResult.Reject -> {
+                            true
+                        }
+
+                        is WebRequestInterceptResult.Modify -> {
+                            request.url = interceptResult.request.url
+                            request.setHeaderMap(interceptResult.request.headers)
+                            request.method = interceptResult.request.method
+                            false
+                        }
+                    }
+                }
             }
         },
     )

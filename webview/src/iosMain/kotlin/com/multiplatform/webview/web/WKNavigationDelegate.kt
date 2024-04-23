@@ -2,6 +2,7 @@ package com.multiplatform.webview.web
 
 import com.multiplatform.webview.request.WebRequest
 import com.multiplatform.webview.request.WebRequestInterceptResult
+import com.multiplatform.webview.request.RequestInterceptor
 import com.multiplatform.webview.util.KLogger
 import platform.Foundation.HTTPMethod
 import platform.Foundation.NSError
@@ -103,54 +104,55 @@ class WKNavigationDelegate(
         KLogger.info {
             "Outer decidePolicyForNavigationAction: $url $isRedirect $decidePolicyForNavigationAction ${decidePolicyForNavigationAction.request.allHTTPHeaderFields}"
         }
-        if (url != null && !isRedirect &&
-            navigator.requestInterceptor != null &&
-            decidePolicyForNavigationAction.targetFrame?.mainFrame == true
-        ) {
-            navigator.requestInterceptor.apply {
-                val request = decidePolicyForNavigationAction.request
-                val headerMap = mutableMapOf<String, String>()
-                request.allHTTPHeaderFields?.forEach {
-                    headerMap[it.key.toString()] = it.value.toString()
-                }
-                KLogger.i {
-                    "decidePolicyForNavigationAction: ${request.URL?.absoluteString}, $headerMap"
-                }
-                val webRequest =
-                    WebRequest(
-                        request.URL?.absoluteString ?: "",
-                        headerMap,
-                        decidePolicyForNavigationAction.targetFrame?.mainFrame ?: false,
-                        isRedirect,
-                        request.HTTPMethod ?: "GET",
-                    )
-                val interceptResult =
-                    navigator.requestInterceptor.onInterceptUrlRequest(
-                        webRequest,
-                        navigator,
-                    )
-                when (interceptResult) {
-                    is WebRequestInterceptResult.Allow -> {
-                        decisionHandler(WKNavigationActionPolicy.WKNavigationActionPolicyAllow)
-                    }
 
-                    is WebRequestInterceptResult.Reject -> {
-                        decisionHandler(WKNavigationActionPolicy.WKNavigationActionPolicyCancel)
-                    }
+        val interceptor: RequestInterceptor? =
+            if (decidePolicyForNavigationAction.targetFrame?.mainFrame == true) navigator.urlRequestInterceptor
+            else navigator.resourceRequestInterceptor
 
-                    is WebRequestInterceptResult.Modify -> {
-                        isRedirect = true
-                        interceptResult.request.apply {
-                            navigator.stopLoading()
-                            navigator.loadUrl(this.url, this.headers)
-                        }
-                        decisionHandler(WKNavigationActionPolicy.WKNavigationActionPolicyCancel)
-                    }
-                }
-            }
-        } else {
+        if (url == null || isRedirect || interceptor == null) {
             isRedirect = false
             decisionHandler(WKNavigationActionPolicy.WKNavigationActionPolicyAllow)
+            return
+        }
+
+        val request = decidePolicyForNavigationAction.request
+        val headerMap = mutableMapOf<String, String>()
+        request.allHTTPHeaderFields?.forEach {
+            headerMap[it.key.toString()] = it.value.toString()
+        }
+        KLogger.i {
+            "decidePolicyForNavigationAction: ${request.URL?.absoluteString}, $headerMap"
+        }
+        val webRequest =
+            WebRequest(
+                request.URL?.absoluteString ?: "",
+                headerMap,
+                decidePolicyForNavigationAction.targetFrame?.mainFrame ?: false,
+                isRedirect,
+                request.HTTPMethod ?: "GET",
+            )
+        val interceptResult =
+            interceptor.onInterceptRequest(
+                webRequest,
+                navigator,
+            )
+        when (interceptResult) {
+            is WebRequestInterceptResult.Allow -> {
+                decisionHandler(WKNavigationActionPolicy.WKNavigationActionPolicyAllow)
+            }
+
+            is WebRequestInterceptResult.Reject -> {
+                decisionHandler(WKNavigationActionPolicy.WKNavigationActionPolicyCancel)
+            }
+
+            is WebRequestInterceptResult.Modify -> {
+                isRedirect = true
+                interceptResult.request.apply {
+                    navigator.stopLoading()
+                    navigator.loadUrl(this.url, this.headers)
+                }
+                decisionHandler(WKNavigationActionPolicy.WKNavigationActionPolicyCancel)
+            }
         }
     }
 }
