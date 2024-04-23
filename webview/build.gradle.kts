@@ -33,23 +33,25 @@ kotlin {
     }
 
     sourceSets {
-        val coroutinesVersion = extra["coroutines.version"] as String
+        val coroutines = "1.7.3"
+
         val commonMain by getting {
             dependencies {
                 implementation(compose.runtime)
                 implementation(compose.foundation)
                 @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
                 implementation(compose.components.resources)
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
-                implementation("co.touchlab:kermit:2.0.3")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+                implementation("co.touchlab:kermit:2.0.0-RC5")
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
             }
         }
         val androidMain by getting {
             dependencies {
-                api("androidx.activity:activity-compose:1.8.2")
-                api("androidx.webkit:webkit:1.10.0")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutinesVersion")
+                api("androidx.activity:activity-compose:1.7.2")
+                api("androidx.webkit:webkit:1.8.0")
+                implementation("androidx.webkit:webkit:1.9.0")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutines")
             }
         }
         val iosX64Main by getting
@@ -65,7 +67,7 @@ kotlin {
             dependencies {
                 implementation(compose.desktop.common)
                 api("dev.datlag:kcef:2024.01.07.1")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:$coroutinesVersion")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:$coroutines")
             }
         }
     }

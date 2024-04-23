@@ -1,8 +1,8 @@
 plugins {
     kotlin("multiplatform")
-    kotlin("plugin.serialization")
-    id("org.jetbrains.compose")
     id("com.android.library")
+    id("org.jetbrains.compose")
+    kotlin("plugin.serialization")
     id("org.jetbrains.kotlin.plugin.atomicfu")
 }
 
@@ -31,8 +31,7 @@ kotlin {
     }
 
     sourceSets {
-        val coroutinesVersion = extra["coroutines.version"] as String
-
+        val coroutines = "1.7.3"
         val commonMain by getting {
             dependencies {
                 implementation(compose.runtime)
@@ -40,24 +39,24 @@ kotlin {
                 implementation(compose.material)
                 @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
                 implementation(compose.components.resources)
-                implementation("co.touchlab:kermit:2.0.3")
+                implementation("co.touchlab:kermit:2.0.0-RC5")
                 api(project(":webview"))
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
-                implementation("org.jetbrains.kotlinx:atomicfu:0.23.2")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
+                implementation("org.jetbrains.kotlinx:atomicfu:0.21.0")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
             }
         }
         val androidMain by getting {
             dependencies {
-                api("androidx.activity:activity-compose:1.8.2")
+                api("androidx.activity:activity-compose:1.7.2")
                 api("androidx.appcompat:appcompat:1.6.1")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutinesVersion")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutines")
             }
         }
         val desktopMain by getting {
             dependencies {
                 implementation(compose.desktop.common)
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:$coroutinesVersion")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:$coroutines")
             }
         }
         val commonTest by getting {
