@@ -66,7 +66,7 @@ kotlin {
         val desktopMain by getting {
             dependencies {
                 implementation(compose.desktop.common)
-                api("dev.datlag:kcef:2024.01.07.1")
+                api("com.github.toasterofbread.KCEF:kcef:c2fa6e8768")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:$coroutines")
             }
         }

@@ -8,7 +8,7 @@ plugins {
 repositories {
     google()
     mavenCentral()
-    maven { url = uri("https://jogamp.org/deployment/maven") }
+    maven { url = uri("https://jitpack.io") }
 }
 
 kotlin {
