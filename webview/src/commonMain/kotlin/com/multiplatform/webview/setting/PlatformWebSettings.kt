@@ -167,6 +167,10 @@ sealed class PlatformWebSettings {
          * Default is [LayerType.HARDWARE]
          */
         var layerType: Int = LayerType.HARDWARE,
+
+        var viewportWidth: String = "device-width",
+
+        var viewportHeight: String = "device-height"
     ) : PlatformWebSettings() {
         object LayerType {
             const val NONE = 0
