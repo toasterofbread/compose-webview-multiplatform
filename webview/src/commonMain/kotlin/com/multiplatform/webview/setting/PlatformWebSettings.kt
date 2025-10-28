@@ -163,14 +163,62 @@ sealed class PlatformWebSettings {
          */
         var domStorageEnabled: Boolean = false,
         /**
+         * Whether the a user gesture is required to play media. The default is {@code true}.
+         */
+        var mediaPlaybackRequiresUserGesture: Boolean = true,
+        /**
+         * Controls whether the `RESOURCE_PROTECTED_MEDIA_ID` permission requests should be
+         * automatically granted or not. Necessary to be able to play back DRM protected media
+         * inside the WebView.
+         * The default is {@code false}.
+         */
+        var allowProtectedMedia: Boolean = false,
+        /**
+         * Controls whether the `RESOURCE_MIDI_SYSEX` permission requests should be automatically
+         * granted or not. The resource will allow sysex messages to be sent to or received from MIDI
+         * devices. Available on API level 21 and above.
+         */
+        var allowMidiSysexMessages: Boolean = false,
+        /**
+         * Controls whether the default video poster (a gray, pixelated play button) should be hidden.
+         */
+        var hideDefaultVideoPoster: Boolean = false,
+        /**
          * The Layer Type of the WebView.
          * Default is [LayerType.HARDWARE]
          */
         var layerType: Int = LayerType.HARDWARE,
-
-        var viewportWidth: String = "device-width",
-
-        var viewportHeight: String = "device-height"
+        /**
+         * Enables sandboxing of local file access via WebViewAssetLoader.
+         *
+         * When true, instead of using file:// URLs (which are insecure and restrict modern features),
+         * the WebView uses WebViewAssetLoader to serve local files (assets/resources/internal storage)
+         * over secure virtual https:// URLs. This improves compatibility with cookies, service workers,
+         * and CSP (Content Security Policy), and prevents file access vulnerabilities.
+         *
+         * This must be used in combination with a proper PathHandler setup in your WebView client
+         * (e.g., mapping /app/ to internal files or app assets).
+         *
+         * For example, if your WebViewAssetLoader maps the path "/app/" to your internal storage,
+         * you can load a file by navigating to a virtual URL like:
+         * `https://appassets.androidplatform.net/app/index.html`
+         * (the standard host used by WebViewAssetLoader)
+         * This URL will internally resolve to your app's internal file path. and enable cookies
+         * for them as well
+         */
+        var enableSandbox: Boolean = false,
+        /**
+         * The virtual subdomain prefix to be used with WebViewAssetLoader for local file access.
+         *
+         * This is typically set to something like "/app/" or "/assets/" and must match the path
+         * used in your PathHandler configuration inside WebViewAssetLoader.
+         *
+         * When you load a URL such as `https://appassets.androidplatform.net/app/index.html`
+         * (the standard host used by WebViewAssetLoader) in your WebView,
+         * the WebViewAssetLoader will map it to the correct local file or asset if configured properly.
+         * This URL should be used instead of file:// URLs to ensure secure and modern WebView behavior.
+         */
+        var sandboxSubdomain: String = "/app/",
     ) : PlatformWebSettings() {
         object LayerType {
             const val NONE = 0
@@ -192,6 +240,13 @@ sealed class PlatformWebSettings {
      * IOS web settings
      */
     data class IOSWebSettings(
+        /**
+         * The ios default opaque display
+         * The default value is {@code false}.
+         * When Value is true will turn off these two properties:
+         * @param backgroundColor,@param underPageBackgroundColor
+         */
+        var opaque: Boolean = false,
         /**
          * The background color of the WebView client. The default value is {@code null}.
          * Will use WebSettings backgroundColor when null.
@@ -223,5 +278,57 @@ sealed class PlatformWebSettings {
          * Whether the vertical scroll indicator is visible. The default value is {@code true}.
          */
         var showVerticalScrollIndicator: Boolean = true,
+        /**
+         * Whether a user gesture is required to play media. The default is {@code true}.
+         */
+        var mediaPlaybackRequiresUserGesture: Boolean = true,
+        /**
+         * Whether the WebView supports inspection via MacOS Safari. The default value is {@code false}.
+         */
+        var isInspectable: Boolean = false,
+    ) : PlatformWebSettings()
+
+    /**
+     * WasmJS web settings
+     */
+    data class WasmJSWebSettings(
+        /**
+         * The background color of the iframe WebView. The default value is {@code null}.
+         * Will use WebSettings backgroundColor when null.
+         *
+         * @param backgroundColor a color value
+         */
+        var backgroundColor: Color? = null,
+        /**
+         * Whether the iframe should have a border. The default value is {@code false}.
+         */
+        var showBorder: Boolean = false,
+        /**
+         * The border style when showBorder is true. The default value is "1px solid #ccc".
+         */
+        var borderStyle: String = "1px solid #ccc",
+        /**
+         * Whether the iframe should be sandboxed. The default value is {@code false}.
+         * When true, applies sandbox restrictions for security.
+         */
+        var enableSandbox: Boolean = false,
+        /**
+         * Sandbox permissions when enableSandbox is true.
+         * The default allows scripts, same-origin, and forms.
+         */
+        var sandboxPermissions: String = "allow-scripts allow-same-origin allow-forms",
+        /**
+         * Whether to allow fullscreen mode. The default value is {@code true}.
+         */
+        var allowFullscreen: Boolean = true,
+        /**
+         * Custom CSS styles to apply to the iframe container.
+         * The default value is {@code null}.
+         */
+        var customContainerStyle: String? = null,
+        /**
+         * Whether to enable console logging for debugging. The default value is {@code false}.
+         */
+        var enableConsoleLogging: Boolean = false,
     ) : PlatformWebSettings()
 }

@@ -1,20 +1,23 @@
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpackConfig
+
 plugins {
-    kotlin("multiplatform")
-    id("com.android.library")
-    id("org.jetbrains.compose")
-    kotlin("plugin.serialization")
-    id("org.jetbrains.kotlin.plugin.atomicfu")
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.compose.multiplatorm)
+    alias(libs.plugins.kotlin.atomicfu)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 @OptIn(org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi::class)
 kotlin {
-    targetHierarchy.default()
+    applyDefaultHierarchyTemplate()
 
     androidTarget {
-        compilations.all {
-            kotlinOptions {
-                jvmTarget = "17"
-            }
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
         }
     }
 
@@ -30,49 +33,64 @@ kotlin {
         }
     }
 
+    @OptIn(ExperimentalWasmDsl::class)
+    wasmJs {
+        browser {
+            val rootDirPath = project.rootDir.path
+            val projectDirPath = project.projectDir.path
+            commonWebpackConfig {
+                devServer =
+                    (devServer ?: KotlinWebpackConfig.DevServer())
+                        .apply {
+                            static =
+                                (static ?: mutableListOf()).apply {
+                                    add(rootDirPath)
+                                    add(projectDirPath)
+                                }
+                        }
+            }
+        }
+    }
+
     sourceSets {
-        val coroutines = "1.7.3"
-        val commonMain by getting {
-            dependencies {
-                implementation(compose.runtime)
-                implementation(compose.foundation)
-                implementation(compose.material)
-                @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
-                implementation(compose.components.resources)
-                implementation("co.touchlab:kermit:2.0.0-RC5")
-                api(project(":webview"))
-                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
-                implementation("org.jetbrains.kotlinx:atomicfu:0.21.0")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
-            }
+        commonMain.dependencies {
+            implementation(compose.runtime)
+            implementation(compose.foundation)
+            implementation(compose.material)
+            implementation(compose.components.resources)
+            implementation(libs.compose.navigation)
+            implementation(libs.material.icons.core)
+            implementation(libs.kermit)
+            implementation(libs.kotlin.serialization.json)
+            implementation(libs.kotlin.atomicfu)
+            implementation(libs.kotlin.coroutines.core)
+            implementation(libs.voyager.navigator)
+            implementation(libs.voyager.tabNavigator)
+
+            api(project(":webview"))
         }
-        val androidMain by getting {
-            dependencies {
-                api("androidx.activity:activity-compose:1.7.2")
-                api("androidx.appcompat:appcompat:1.6.1")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutines")
-            }
+
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
         }
-        val desktopMain by getting {
-            dependencies {
-                implementation(compose.desktop.common)
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:$coroutines")
-            }
+
+        androidMain.dependencies {
+            api(libs.android.activity.compose)
+            api(libs.android.appcompat)
+            implementation(libs.kotlin.coroutines.android)
         }
-        val commonTest by getting {
-            dependencies {
-                implementation(kotlin("test"))
-            }
+        val desktopMain by getting
+        desktopMain.dependencies {
+            implementation(compose.desktop.common)
+            implementation(libs.kotlin.coroutines.swing)
         }
     }
 }
 
 android {
     namespace = "com.kevinnzou.sample"
-    compileSdk = 34
+    compileSdk = 36
 
-    sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
-    sourceSets["main"].res.srcDirs("src/androidMain/res")
     sourceSets["main"].resources.srcDirs("src/commonMain/resources")
 
     defaultConfig {

@@ -3,14 +3,22 @@ package com.multiplatform.webview.web
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.interop.UIKitView
+import androidx.compose.ui.viewinterop.UIKitInteropInteractionMode
+import androidx.compose.ui.viewinterop.UIKitInteropProperties
+import androidx.compose.ui.viewinterop.UIKitView
 import com.multiplatform.webview.jsbridge.WebViewJsBridge
 import com.multiplatform.webview.util.toUIColor
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.cValue
 import kotlinx.cinterop.readValue
 import platform.CoreGraphics.CGRectZero
+import platform.Foundation.NSOperatingSystemVersion
+import platform.Foundation.NSProcessInfo
 import platform.Foundation.setValue
+import platform.WebKit.WKAudiovisualMediaTypeAll
+import platform.WebKit.WKAudiovisualMediaTypeNone
 import platform.WebKit.WKWebView
 import platform.WebKit.WKWebViewConfiguration
 import platform.WebKit.javaScriptEnabled
@@ -25,8 +33,10 @@ actual fun ActualWebView(
     captureBackPresses: Boolean,
     navigator: WebViewNavigator,
     webViewJsBridge: WebViewJsBridge?,
-    onCreated: () -> Unit,
-    onDispose: () -> Unit,
+    onCreated: (NativeWebView) -> Unit,
+    onDispose: (NativeWebView) -> Unit,
+    platformWebViewParams: PlatformWebViewParams?,
+    factory: (WebViewFactoryParam) -> NativeWebView,
 ) {
     IOSWebView(
         state = state,
@@ -36,13 +46,29 @@ actual fun ActualWebView(
         webViewJsBridge = webViewJsBridge,
         onCreated = onCreated,
         onDispose = onDispose,
+        factory = factory,
     )
 }
+
+/** iOS WebView factory parameters: configuration created from WebSettings. */
+actual data class WebViewFactoryParam(
+    val config: WKWebViewConfiguration,
+)
+
+actual class PlatformWebViewParams
+
+/** Default WebView factory for iOS. */
+@OptIn(ExperimentalForeignApi::class)
+actual fun defaultWebViewFactory(param: WebViewFactoryParam) =
+    WKWebView(
+        frame = CGRectZero.readValue(),
+        configuration = param.config,
+    )
 
 /**
  * iOS WebView implementation.
  */
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(ExperimentalForeignApi::class, ExperimentalComposeUiApi::class)
 @Composable
 fun IOSWebView(
     state: WebViewState,
@@ -50,8 +76,9 @@ fun IOSWebView(
     captureBackPresses: Boolean,
     navigator: WebViewNavigator,
     webViewJsBridge: WebViewJsBridge?,
-    onCreated: () -> Unit,
-    onDispose: () -> Unit,
+    onCreated: (NativeWebView) -> Unit,
+    onDispose: (NativeWebView) -> Unit,
+    factory: (WebViewFactoryParam) -> NativeWebView,
 ) {
     val observer =
         remember {
@@ -68,46 +95,84 @@ fun IOSWebView(
             val config =
                 WKWebViewConfiguration().apply {
                     allowsInlineMediaPlayback = true
-                    defaultWebpagePreferences.allowsContentJavaScript = state.webSettings.isJavaScriptEnabled
+                    mediaTypesRequiringUserActionForPlayback =
+                        if (state.webSettings.iOSWebSettings.mediaPlaybackRequiresUserGesture) {
+                            WKAudiovisualMediaTypeAll
+                        } else {
+                            WKAudiovisualMediaTypeNone
+                        }
+                    defaultWebpagePreferences.allowsContentJavaScript =
+                        state.webSettings.isJavaScriptEnabled
                     preferences.apply {
-                        setValue(state.webSettings.allowFileAccessFromFileURLs, forKey = "allowFileAccessFromFileURLs")
+                        setValue(
+                            state.webSettings.allowFileAccessFromFileURLs,
+                            forKey = "allowFileAccessFromFileURLs",
+                        )
                         javaScriptEnabled = state.webSettings.isJavaScriptEnabled
                     }
-                    setValue(state.webSettings.allowUniversalAccessFromFileURLs, forKey = "allowUniversalAccessFromFileURLs")
+                    setValue(
+                        value = state.webSettings.allowUniversalAccessFromFileURLs,
+                        forKey = "allowUniversalAccessFromFileURLs",
+                    )
                 }
-            WKWebView(
-                frame = CGRectZero.readValue(),
-                configuration = config,
-            ).apply {
-                onCreated()
-                allowsBackForwardNavigationGestures = captureBackPresses
-                customUserAgent = state.webSettings.customUserAgentString
-                this.addProgressObservers(
-                    observer = observer,
-                )
-                this.navigationDelegate = navigationDelegate
-
-                setOpaque(false)
-                state.webSettings.let {
-                    val backgroundColor = (it.iOSWebSettings.backgroundColor ?: it.backgroundColor).toUIColor()
-                    val scrollViewColor = (it.iOSWebSettings.underPageBackgroundColor ?: it.backgroundColor).toUIColor()
-                    setBackgroundColor(backgroundColor)
-                    scrollView.setBackgroundColor(scrollViewColor)
-                    scrollView.pinchGestureRecognizer?.enabled = it.supportZoom
-                }
-                state.webSettings.iOSWebSettings.let {
-                    with(scrollView) {
-                        bounces = it.bounces
-                        scrollEnabled = it.scrollEnabled
-                        showsHorizontalScrollIndicator = it.showHorizontalScrollIndicator
-                        showsVerticalScrollIndicator = it.showVerticalScrollIndicator
+            factory(WebViewFactoryParam(config))
+                .apply {
+                    onCreated(this)
+                    state.viewState?.let {
+                        this.interactionState = it
                     }
+                    allowsBackForwardNavigationGestures = captureBackPresses
+                    customUserAgent = state.webSettings.customUserAgentString
+                    this.addProgressObservers(
+                        observer = observer,
+                    )
+                    this.navigationDelegate = navigationDelegate
+
+                    state.webSettings.let {
+                        val backgroundColor =
+                            (it.iOSWebSettings.backgroundColor ?: it.backgroundColor).toUIColor()
+                        val scrollViewColor =
+                            (
+                                it.iOSWebSettings.underPageBackgroundColor
+                                    ?: it.backgroundColor
+                            ).toUIColor()
+                        setOpaque(it.iOSWebSettings.opaque)
+                        if (!it.iOSWebSettings.opaque) {
+                            setBackgroundColor(backgroundColor)
+                            scrollView.setBackgroundColor(scrollViewColor)
+                        }
+                        scrollView.pinchGestureRecognizer?.enabled = it.supportZoom
+                    }
+                    state.webSettings.iOSWebSettings.let {
+                        with(scrollView) {
+                            bounces = it.bounces
+                            scrollEnabled = it.scrollEnabled
+                            showsHorizontalScrollIndicator = it.showHorizontalScrollIndicator
+                            showsVerticalScrollIndicator = it.showVerticalScrollIndicator
+                        }
+                    }
+
+                    /**
+                     * Sets the inspectable property of the WKWebView.
+                     * This is only done if the operating system version is iOS 16.4 or later
+                     * to prevent crashes on lower versions where the `setInspectable` method is not available.
+                     * Enabling this allows Safari Web Inspector to debug the content of the WebView.
+                     * The value is determined by `state.webSettings.iOSWebSettings.isInspectable`.
+                     */
+                    val minSetInspectableVersion =
+                        cValue<NSOperatingSystemVersion> {
+                            majorVersion = 16
+                            minorVersion = 4
+                            patchVersion = 0
+                        }
+                    if (NSProcessInfo.processInfo.isOperatingSystemAtLeastVersion(minSetInspectableVersion)) {
+                        this.setInspectable(state.webSettings.iOSWebSettings.isInspectable)
+                    }
+                }.also {
+                    val iosWebView = IOSWebView(it, scope, webViewJsBridge)
+                    state.webView = iosWebView
+                    webViewJsBridge?.webView = iosWebView
                 }
-            }.also {
-                val iosWebView = IOSWebView(it, scope, webViewJsBridge)
-                state.webView = iosWebView
-                webViewJsBridge?.webView = iosWebView
-            }
         },
         modifier = modifier,
         onRelease = {
@@ -116,7 +181,17 @@ fun IOSWebView(
                 observer = observer,
             )
             it.navigationDelegate = null
-            onDispose()
+            onDispose(it)
         },
+        properties =
+            UIKitInteropProperties(
+                interactionMode =
+                    if (state.webSettings.iOSWebSettings.scrollEnabled) {
+                        UIKitInteropInteractionMode.NonCooperative
+                    } else {
+                        UIKitInteropInteractionMode.Cooperative()
+                    },
+                isNativeAccessibilityEnabled = true,
+            ),
     )
 }

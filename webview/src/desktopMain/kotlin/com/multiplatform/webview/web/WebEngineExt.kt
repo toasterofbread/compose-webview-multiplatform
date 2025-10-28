@@ -1,8 +1,8 @@
 package com.multiplatform.webview.web
 
+import com.multiplatform.webview.request.RequestInterceptor
 import com.multiplatform.webview.request.WebRequest
 import com.multiplatform.webview.request.WebRequestInterceptResult
-import com.multiplatform.webview.request.RequestInterceptor
 import com.multiplatform.webview.util.KLogger
 import dev.datlag.kcef.KCEFBrowser
 import org.cef.CefSettings
@@ -12,17 +12,13 @@ import org.cef.handler.CefDisplayHandler
 import org.cef.handler.CefLoadHandler
 import org.cef.handler.CefRequestHandlerAdapter
 import org.cef.handler.CefResourceRequestHandlerAdapter
-import org.cef.network.CefRequest
 import org.cef.misc.BoolRef
-import kotlin.math.abs
-import kotlin.math.ln
+import org.cef.network.CefRequest
 
 /**
  * Created By Kevin Zou On 2023/9/12
  */
-internal fun CefBrowser.getCurrentUrl(): String? {
-    return this.url
-}
+internal fun CefBrowser.getCurrentUrl(): String? = this.url
 
 internal fun CefBrowser.addDisplayHandler(state: WebViewState) {
     this.client.addDisplayHandler(
@@ -42,27 +38,28 @@ internal fun CefBrowser.addDisplayHandler(state: WebViewState) {
             ) {
                 // https://magpcss.org/ceforum/viewtopic.php?t=11491
                 // https://github.com/KevinnZou/compose-webview-multiplatform/issues/46
+                // I found this formula much near to the other platforms, so I replace it
                 val givenZoomLevel = state.webSettings.zoomLevel
-                val realZoomLevel =
-                    if (givenZoomLevel >= 0.0) {
-                        ln(abs(givenZoomLevel)) / ln(1.2)
-                    } else {
-                        -ln(abs(givenZoomLevel)) / ln(1.2)
-                    }
+
+                val percentage = givenZoomLevel * 100.0
+                val realZoomLevel = (percentage - 100.0) / 25.0
+
                 KLogger.d { "titleProperty: $title" }
                 zoomLevel = realZoomLevel
                 state.pageTitle = title
             }
 
-            override fun onFullscreenModeChange(p0: CefBrowser?, p1: Boolean) {
+            override fun onFullscreenModeChange(
+                p0: CefBrowser?,
+                p1: Boolean,
+            ) {
+                // Not supported
             }
 
             override fun onTooltip(
                 browser: CefBrowser?,
                 text: String?,
-            ): Boolean {
-                return false
-            }
+            ) = false
 
             override fun onStatusMessage(
                 browser: CefBrowser?,
@@ -76,16 +73,12 @@ internal fun CefBrowser.addDisplayHandler(state: WebViewState) {
                 message: String?,
                 source: String?,
                 line: Int,
-            ): Boolean {
-                return false
-            }
+            ) = false
 
             override fun onCursorChange(
                 browser: CefBrowser?,
                 cursorType: Int,
-            ): Boolean {
-                return false
-            }
+            ) = false
         },
     )
 }
@@ -139,7 +132,7 @@ internal fun CefBrowser.addLoadListener(
                 KLogger.d { "Load End ${browser?.url}" }
                 state.loadingState = LoadingState.Finished
                 navigator.canGoBack = canGoBack()
-                navigator.canGoBack = canGoForward()
+                navigator.canGoForward = canGoForward()
                 state.lastLoadedUrl = getCurrentUrl()
             }
 
@@ -159,6 +152,7 @@ internal fun CefBrowser.addLoadListener(
                     WebViewError(
                         code = errorCode?.code ?: 404,
                         description = "Failed to load url: ${failedUrl}\n$errorText",
+                        isFromMainFrame = frame?.isMain ?: false,
                     ),
                 )
             }

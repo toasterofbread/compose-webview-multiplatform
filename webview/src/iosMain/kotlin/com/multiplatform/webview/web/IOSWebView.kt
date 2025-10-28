@@ -3,19 +3,27 @@ package com.multiplatform.webview.web
 import com.multiplatform.webview.jsbridge.WKJsMessageHandler
 import com.multiplatform.webview.jsbridge.WebViewJsBridge
 import com.multiplatform.webview.util.KLogger
+import com.multiplatform.webview.util.getPlatformVersionDouble
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.allocArrayOf
 import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.useContents
 import kotlinx.coroutines.CoroutineScope
 import platform.Foundation.HTTPBody
 import platform.Foundation.HTTPMethod
+import platform.Foundation.NSArray
 import platform.Foundation.NSBundle
 import platform.Foundation.NSData
+import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSMutableURLRequest
+import platform.Foundation.NSSearchPathForDirectoriesInDomains
+import platform.Foundation.NSString
 import platform.Foundation.NSURL
+import platform.Foundation.NSUserDomainMask
 import platform.Foundation.create
 import platform.Foundation.setValue
+import platform.Foundation.stringByDeletingLastPathComponent
 import platform.WebKit.WKWebView
 import platform.darwin.NSObject
 import platform.darwin.NSObjectMeta
@@ -24,11 +32,13 @@ import platform.darwin.NSObjectMeta
  * Created By Kevin Zou On 2023/9/5
  */
 
+actual typealias NativeWebView = WKWebView
+
 /**
  * iOS implementation of [IWebView]
  */
 class IOSWebView(
-    private val wkWebView: WKWebView,
+    override val webView: WKWebView,
     override val scope: CoroutineScope,
     override val webViewJsBridge: WebViewJsBridge?,
 ) : IWebView {
@@ -36,15 +46,41 @@ class IOSWebView(
         initWebView()
     }
 
-    override fun canGoBack() = wkWebView.canGoBack
+    override fun canGoBack() = webView.canGoBack
 
-    override fun canGoForward() = wkWebView.canGoForward
+    override fun canGoForward() = webView.canGoForward
 
     override fun loadUrl(
         url: String,
         additionalHttpHeaders: Map<String, String>,
     ) {
-        KLogger.d { "Load url: $url" }
+        // Check if it's a file URL
+        if (url.startsWith("file://")) {
+            val fileURL = NSURL(string = url)
+            if (fileURL != null && fileURL.isFileURL()) {
+                // Use document directory for read access to fix real device issues
+                val documentPaths =
+                    NSSearchPathForDirectoriesInDomains(
+                        NSDocumentDirectory,
+                        NSUserDomainMask,
+                        true,
+                    ) as NSArray
+                val readAccessURL =
+                    if (documentPaths.count > 0u) {
+                        val documentPath = documentPaths.objectAtIndex(0u) as? String
+                        documentPath?.let { NSURL.fileURLWithPath(it) }
+                    } else {
+                        null
+                    }
+
+                if (readAccessURL != null) {
+                    webView.loadFileURL(fileURL, readAccessURL)
+                    return
+                }
+            }
+        }
+
+        // Handle regular HTTP/HTTPS URLs
         val request =
             NSMutableURLRequest.requestWithURL(
                 URL = NSURL(string = url),
@@ -56,12 +92,12 @@ class IOSWebView(
             )
             true
         }
-        wkWebView.loadRequest(
+        webView.loadRequest(
             request = request,
         )
     }
 
-    override fun loadHtml(
+    override suspend fun loadHtml(
         html: String?,
         baseUrl: String?,
         mimeType: String?,
@@ -74,16 +110,82 @@ class IOSWebView(
             }
             return
         }
-        wkWebView.loadHTMLString(
+        webView.loadHTMLString(
             string = html,
             baseURL = baseUrl?.let { NSURL.URLWithString(it) },
         )
     }
 
-    override suspend fun loadHtmlFile(fileName: String) {
-        val res = NSBundle.mainBundle.resourcePath + "/compose-resources/assets/" + fileName
-        val url = NSURL.fileURLWithPath(res)
-        wkWebView.loadFileURL(url, url)
+    override suspend fun loadHtmlFile(
+        fileName: String,
+        readType: WebViewFileReadType,
+    ) {
+        try {
+            val fileURL: NSURL
+            var readAccessURL: NSURL? = null
+
+            when (readType) {
+                WebViewFileReadType.ASSET_RESOURCES -> {
+                    val resourcePath =
+                        (NSBundle.mainBundle.resourcePath ?: "") +
+                            "/compose-resources/assets/" + fileName
+                    fileURL = NSURL.fileURLWithPath(resourcePath)
+
+                    val parentDir = (resourcePath as NSString).stringByDeletingLastPathComponent()
+                    if (parentDir.isNotBlank()) {
+                        readAccessURL = NSURL.fileURLWithPath(parentDir)
+                    } else {
+                        readAccessURL = NSURL.fileURLWithPath(NSBundle.mainBundle.resourcePath!!)
+                    }
+                }
+
+                WebViewFileReadType.COMPOSE_RESOURCE_FILES -> {
+                    fileURL = NSURL(string = fileName)
+                    val readAccessURLPath =
+                        (fileName as NSString).stringByDeletingLastPathComponent()
+                    readAccessURL = NSURL(string = readAccessURLPath)
+                }
+            }
+
+            if (!fileURL.isFileURL()) {
+                KLogger.e {
+                    "The determined fileURL is not a valid file URL: ${fileURL.absoluteString}"
+                }
+                loadHtml(
+                    "<html><body>Error: Not a file URL: ${fileURL.absoluteString}</body></html>",
+                )
+                return
+            }
+
+            val finalReadAccessURL = readAccessURL
+
+            if (finalReadAccessURL.path.isNullOrEmpty()) {
+                KLogger.e {
+                    "Critical: finalReadAccessURL is null or has an empty path. " +
+                        "Cannot load file with proper read access for ${fileURL.absoluteString}"
+                }
+                loadHtml(
+                    "<html><body>Error: Cannot determine read access URL " +
+                        "for ${fileURL.absoluteString}</body></html>",
+                )
+                return
+            }
+
+            webView.loadFileURL(fileURL, finalReadAccessURL)
+        } catch (e: Exception) {
+            KLogger.e(e) { "Error loading HTML file: $fileName (readType: $readType)" }
+            val errorHtml =
+                """
+                <!DOCTYPE html>
+                <html><head><title>Error</title></head>
+                <body>
+                    <h1>Error Loading File</h1>
+                    <p>Could not load: $fileName (readType: $readType)</p>
+                    <p>Error: ${e.message}</p>
+                </body></html>
+                """.trimIndent()
+            loadHtml(errorHtml)
+        }
     }
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
@@ -102,36 +204,35 @@ class IOSWebView(
                     NSData.create(bytes = allocArrayOf(postData), length = postData.size.toULong())
                 }
         }
-        wkWebView.loadRequest(request = request)
+        webView.loadRequest(request = request)
     }
 
     override fun goBack() {
-        wkWebView.goBack()
+        webView.goBack()
     }
 
     override fun goForward() {
-        wkWebView.goForward()
+        webView.goForward()
     }
 
     override fun reload() {
-        wkWebView.reload()
+        webView.reload()
     }
 
     override fun stopLoading() {
-        wkWebView.stopLoading()
+        webView.stopLoading()
     }
 
     override fun evaluateJavaScript(
         script: String,
         callback: ((String) -> Unit)?,
     ) {
-        wkWebView.evaluateJavaScript(script) { result, error ->
+        webView.evaluateJavaScript(script) { result, error ->
             if (callback == null) return@evaluateJavaScript
             if (error != null) {
                 KLogger.e { "evaluateJavaScript error: $error" }
                 callback.invoke(error.localizedDescription())
             } else {
-                KLogger.info { "evaluateJavaScript result: $result" }
                 callback.invoke(result?.toString() ?: "")
             }
         }
@@ -139,9 +240,6 @@ class IOSWebView(
 
     override fun injectJsBridge() {
         if (webViewJsBridge == null) return
-        KLogger.info {
-            "iOS WebView injectJsBridge"
-        }
         super.injectJsBridge()
         val callIOS =
             """
@@ -153,10 +251,26 @@ class IOSWebView(
     }
 
     override fun initJsBridge(webViewJsBridge: WebViewJsBridge) {
-        KLogger.info { "injectBridge" }
         val jsMessageHandler = WKJsMessageHandler(webViewJsBridge)
-        wkWebView.configuration.userContentController.apply {
+        webView.configuration.userContentController.apply {
             addScriptMessageHandler(jsMessageHandler, "iosJsBridge")
+        }
+    }
+
+    override fun saveState(): WebViewBundle? {
+        // iOS 15- does not support saving state
+        if (getPlatformVersionDouble() < 15.0) {
+            return null
+        }
+        val data = webView.interactionState as NSData?
+        return data
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    override fun scrollOffset(): Pair<Int, Int> {
+        val offset = webView.scrollView.contentOffset
+        offset.useContents {
+            return Pair(x.toInt(), y.toInt())
         }
     }
 

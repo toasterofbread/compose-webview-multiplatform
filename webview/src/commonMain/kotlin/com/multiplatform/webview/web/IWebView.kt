@@ -2,18 +2,26 @@ package com.multiplatform.webview.web
 
 import com.multiplatform.webview.jsbridge.WebViewJsBridge
 import com.multiplatform.webview.util.KLogger
+import compose_webview_multiplatform.webview.generated.resources.Res
 import kotlinx.coroutines.CoroutineScope
 import org.jetbrains.compose.resources.ExperimentalResourceApi
-import org.jetbrains.compose.resources.resource
 
 /**
  * Created By Kevin Zou On 2023/9/5
  */
 
+expect class NativeWebView
+
 /**
  * Interface for WebView
  */
 interface IWebView {
+    /**
+     * The native web view instance. On Android, this is an instance of [android.webkit.WebView].
+     * On iOS, this is an instance of [WKWebView]. On desktop, this is an instance of [KCEFBrowser].
+     */
+    val webView: NativeWebView
+
     val scope: CoroutineScope
 
     val webViewJsBridge: WebViewJsBridge?
@@ -47,7 +55,7 @@ interface IWebView {
      * @param encoding The encoding of the data in the string.
      * @param historyUrl The history URL for the loaded HTML. Leave null to use about:blank.
      */
-    fun loadHtml(
+    suspend fun loadHtml(
         html: String? = null,
         baseUrl: String? = null,
         mimeType: String? = "text/html",
@@ -75,6 +83,7 @@ interface IWebView {
             is WebContent.File ->
                 loadHtmlFile(
                     content.fileName,
+                    content.readType,
                 )
 
             is WebContent.Post ->
@@ -97,8 +106,8 @@ interface IWebView {
      */
     @OptIn(ExperimentalResourceApi::class)
     suspend fun loadRawHtmlFile(fileName: String) {
-        val res = resource(fileName)
-        val html = res.readBytes().decodeToString().trimIndent()
+        val res = Res.readBytes(fileName)
+        val html = res.decodeToString().trimIndent()
         loadHtml(html, encoding = "utf-8")
     }
 
@@ -110,7 +119,10 @@ interface IWebView {
      *
      * @param fileName The name of the HTML file to load.
      */
-    suspend fun loadHtmlFile(fileName: String)
+    suspend fun loadHtmlFile(
+        fileName: String,
+        readType: WebViewFileReadType,
+    )
 
     /**
      * Posts the given data to the given URL.
@@ -206,4 +218,14 @@ interface IWebView {
             initJsBridge(this)
         }
     }
+
+    /**
+     * Save the current state of the WebView.
+     */
+    fun saveState(): WebViewBundle?
+
+    /**
+     * Get the scroll offset of the WebView.
+     */
+    fun scrollOffset(): Pair<Int, Int>
 }

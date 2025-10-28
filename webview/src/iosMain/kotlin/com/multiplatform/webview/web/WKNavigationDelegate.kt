@@ -1,9 +1,14 @@
 package com.multiplatform.webview.web
 
+import com.multiplatform.webview.request.RequestInterceptor
 import com.multiplatform.webview.request.WebRequest
 import com.multiplatform.webview.request.WebRequestInterceptResult
-import com.multiplatform.webview.request.RequestInterceptor
 import com.multiplatform.webview.util.KLogger
+import com.multiplatform.webview.util.getPlatformVersionDouble
+import com.multiplatform.webview.util.notZero
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.ObjCSignatureOverride
+import platform.CoreGraphics.CGPointMake
 import platform.Foundation.HTTPMethod
 import platform.Foundation.NSError
 import platform.Foundation.allHTTPHeaderFields
@@ -25,12 +30,14 @@ import platform.darwin.NSObject
 class WKNavigationDelegate(
     private val state: WebViewState,
     private val navigator: WebViewNavigator,
-) : NSObject(), WKNavigationDelegateProtocol {
+) : NSObject(),
+    WKNavigationDelegateProtocol {
     private var isRedirect = false
 
     /**
      * Called when the web view begins to receive web content.
      */
+    @ObjCSignatureOverride
     override fun webView(
         webView: WKWebView,
         didStartProvisionalNavigation: WKNavigation?,
@@ -46,6 +53,7 @@ class WKNavigationDelegate(
     /**
      * Called when the web view receives a server redirect.
      */
+    @ObjCSignatureOverride
     override fun webView(
         webView: WKWebView,
         didCommitNavigation: WKNavigation?,
@@ -53,7 +61,8 @@ class WKNavigationDelegate(
         val supportZoom = if (state.webSettings.supportZoom) "yes" else "no"
 
         @Suppress("ktlint:standard:max-line-length")
-        val script = "var meta = document.createElement('meta');meta.setAttribute('name', 'viewport');meta.setAttribute('content', 'width=device-width, initial-scale=${state.webSettings.zoomLevel}, maximum-scale=10.0, minimum-scale=0.1,user-scalable=$supportZoom');document.getElementsByTagName('head')[0].appendChild(meta);"
+        val script =
+            "var meta = document.createElement('meta');meta.setAttribute('name', 'viewport');meta.setAttribute('content', 'width=device-width, initial-scale=${state.webSettings.zoomLevel}, maximum-scale=10.0, minimum-scale=0.1,user-scalable=$supportZoom');document.getElementsByTagName('head')[0].appendChild(meta);"
         webView.evaluateJavaScript(script) { _, _ -> }
         KLogger.info { "didCommitNavigation" }
     }
@@ -61,6 +70,8 @@ class WKNavigationDelegate(
     /**
      * Called when the web view finishes loading.
      */
+    @OptIn(ExperimentalForeignApi::class)
+    @ObjCSignatureOverride
     override fun webView(
         webView: WKWebView,
         didFinishNavigation: WKNavigation?,
@@ -70,7 +81,19 @@ class WKNavigationDelegate(
         state.loadingState = LoadingState.Finished
         navigator.canGoBack = webView.canGoBack
         navigator.canGoForward = webView.canGoForward
-        KLogger.info { "didFinishNavigation" }
+        // Restore scroll position on iOS 14 and below
+        if (getPlatformVersionDouble() < 15.0) {
+            if (state.scrollOffset.notZero()) {
+                webView.scrollView.setContentOffset(
+                    CGPointMake(
+                        x = state.scrollOffset.first.toDouble(),
+                        y = state.scrollOffset.second.toDouble(),
+                    ),
+                    true,
+                )
+            }
+        }
+        KLogger.info { "didFinishNavigation ${state.lastLoadedUrl}" }
     }
 
     /**
@@ -86,8 +109,10 @@ class WKNavigationDelegate(
         }
         state.errorsForCurrentRequest.add(
             WebViewError(
-                withError.code.toInt(),
-                withError.localizedDescription,
+                code = withError.code.toInt(),
+                description = withError.localizedDescription,
+                // on iOS all errors are from the main frame
+                isFromMainFrame = true,
             ),
         )
         KLogger.e {

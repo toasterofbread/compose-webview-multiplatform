@@ -1,18 +1,23 @@
 @file:Suppress("UNUSED_VARIABLE", "OPT_IN_USAGE")
 
+import org.jetbrains.dokka.gradle.DokkaTask
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpackConfig
+import java.net.URL
+
 plugins {
-    kotlin("multiplatform")
-    id("com.android.library")
-    id("org.jetbrains.compose")
-    id("org.jetbrains.dokka")
-    id("com.vanniktech.maven.publish")
-    kotlin("plugin.serialization")
+    alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.compose.multiplatorm)
+    alias(libs.plugins.dokka)
+    alias(libs.plugins.maven.publish)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 kotlin {
 //    explicitApi = ExplicitApiMode.Strict
-
-    targetHierarchy.default()
+    applyDefaultHierarchyTemplate()
 
     androidTarget {
         publishLibraryVariants("release")
@@ -32,43 +37,49 @@ kotlin {
         iosTarget.setUpiOSObserver()
     }
 
-    sourceSets {
-        val coroutines = "1.7.3"
+    @OptIn(ExperimentalWasmDsl::class)
+    wasmJs {
+        browser {
+            val rootDirPath = project.rootDir.path
+            val projectDirPath = project.projectDir.path
+            commonWebpackConfig {
+                devServer =
+                    (devServer ?: KotlinWebpackConfig.DevServer())
+                        .apply {
+                            static =
+                                (static ?: mutableListOf())
+                                    .apply {
+                                        add(rootDirPath)
+                                        add(projectDirPath)
+                                    }
+                        }
+            }
+        }
+    }
 
-        val commonMain by getting {
-            dependencies {
-                implementation(compose.runtime)
-                implementation(compose.foundation)
-                @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
-                implementation(compose.components.resources)
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
-                implementation("co.touchlab:kermit:2.0.0-RC5")
-                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
-            }
+    sourceSets {
+        commonMain.dependencies {
+            implementation(compose.runtime)
+            implementation(compose.foundation)
+            implementation(compose.components.resources)
+            implementation(libs.kermit)
+            implementation(libs.kotlin.coroutines.core)
+            implementation(libs.kotlin.serialization.json)
         }
-        val androidMain by getting {
-            dependencies {
-                api("androidx.activity:activity-compose:1.7.2")
-                api("androidx.webkit:webkit:1.8.0")
-                implementation("androidx.webkit:webkit:1.9.0")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutines")
-            }
+
+        androidMain.dependencies {
+            api(libs.android.activity.compose)
+            api(libs.android.webkit)
+            implementation(libs.kotlin.coroutines.android)
         }
-        val iosX64Main by getting
-        val iosArm64Main by getting
-        val iosSimulatorArm64Main by getting
-        val iosMain by getting {
-            dependsOn(commonMain)
-            iosX64Main.dependsOn(this)
-            iosArm64Main.dependsOn(this)
-            iosSimulatorArm64Main.dependsOn(this)
-        }
-        val desktopMain by getting {
-            dependencies {
-                implementation(compose.desktop.common)
-                api("com.github.toasterofbread.KCEF:kcef:c2fa6e8768")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:$coroutines")
-            }
+
+        iosMain.dependencies { }
+
+        val desktopMain by getting
+        desktopMain.dependencies {
+            implementation(compose.desktop.common)
+            api(libs.kcef)
+            implementation(libs.kotlin.coroutines.swing)
         }
     }
 }
@@ -76,10 +87,6 @@ kotlin {
 android {
     compileSdk = (findProperty("android.compileSdk") as String).toInt()
     namespace = "com.multiplatform.webview"
-
-    sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
-    sourceSets["main"].res.srcDirs("src/androidMain/res")
-    sourceSets["main"].resources.srcDirs("src/commonMain/resources")
 
     defaultConfig {
         minSdk = (findProperty("android.minSdk") as String).toInt()
@@ -109,6 +116,21 @@ fun org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget.setUpiOSObserver()
 }
 
 mavenPublishing {
-    publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.S01, automaticRelease = true)
-    // signAllPublications()
+    publishToMavenCentral(true)
+//    signAllPublications()
+}
+
+tasks.withType<DokkaTask>().configureEach {
+    offlineMode.set(true) // 是否离线模式
+    // 新版配置方式
+    dokkaSourceSets {
+        configureEach {
+            // 添加外部文档链接
+            externalDocumentationLink {
+                url.set(URL("https://developer.android.com/reference/kotlin/"))
+                // 指向本地 package-list 文件
+                packageListUrl.set(URL("file://$projectDir/docs/android-kotlin-package-list"))
+            }
+        }
+    }
 }

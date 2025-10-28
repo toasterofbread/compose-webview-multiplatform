@@ -1,16 +1,18 @@
 package com.multiplatform.webview.web
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.os.Build
 import android.view.ViewGroup
+import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.webkit.WebResourceResponse
 import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -20,12 +22,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.createBitmap
 import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewFeature
 import com.multiplatform.webview.jsbridge.WebViewJsBridge
+import com.multiplatform.webview.request.RequestInterceptor
 import com.multiplatform.webview.request.WebRequest
 import com.multiplatform.webview.request.WebRequestInterceptResult
-import com.multiplatform.webview.request.RequestInterceptor
+import com.multiplatform.webview.util.InternalStoragePathHandler
 import com.multiplatform.webview.util.KLogger
 
 /**
@@ -164,67 +170,89 @@ fun AccompanistWebView(
 
     AndroidView(
         factory = { context ->
-            (factory?.invoke(context) ?: WebView(context)).apply {
-                onCreated(this)
+            (factory?.invoke(context) ?: WebView(context))
+                .apply {
+                    onCreated(this)
 
-                this.layoutParams = layoutParams
+                    this.layoutParams = layoutParams
 
-//                state.viewState?.let {
-//                    this.restoreState(it)
-//                }
-
-                webChromeClient = chromeClient
-                webViewClient = client
-
-                // Avoid covering other components
-                this.setLayerType(state.webSettings.androidWebSettings.layerType, null)
-
-                settings.apply {
-                    state.webSettings.let {
-                        javaScriptEnabled = it.isJavaScriptEnabled
-                        userAgentString = it.customUserAgentString
-                        allowFileAccessFromFileURLs = it.allowFileAccessFromFileURLs
-                        allowUniversalAccessFromFileURLs = it.allowUniversalAccessFromFileURLs
-                        setSupportZoom(it.supportZoom)
+                    state.viewState?.let {
+                        this.restoreState(it)
                     }
 
-                    state.webSettings.androidWebSettings.let {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            safeBrowsingEnabled = it.safeBrowsingEnabled
+                    chromeClient.context = context
+                    webChromeClient = chromeClient
+                    webViewClient = client
+
+                    // Avoid covering other components
+                    this.setLayerType(state.webSettings.androidWebSettings.layerType, null)
+
+                    settings.apply {
+                        state.webSettings.let {
+                            javaScriptEnabled = it.isJavaScriptEnabled
+                            userAgentString = it.customUserAgentString
+                            allowFileAccessFromFileURLs = it.allowFileAccessFromFileURLs
+                            allowUniversalAccessFromFileURLs = it.allowUniversalAccessFromFileURLs
                         }
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            isAlgorithmicDarkeningAllowed = it.isAlgorithmicDarkeningAllowed
-                        }
-                        setBackgroundColor(state.webSettings.backgroundColor.toArgb())
-                        allowFileAccess = it.allowFileAccess
-                        textZoom = it.textZoom
-                        useWideViewPort = it.useWideViewPort
-                        standardFontFamily = it.standardFontFamily
-                        defaultFontSize = it.defaultFontSize
-                        loadsImagesAutomatically = it.loadsImagesAutomatically
-                        domStorageEnabled = it.domStorageEnabled
-                    }
-                }
-                if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
-                    val nightModeFlags = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
-                    if (nightModeFlags == Configuration.UI_MODE_NIGHT_YES) {
-                        WebSettingsCompat.setForceDark(this.settings, WebSettingsCompat.FORCE_DARK_ON)
-                    } else {
-                        WebSettingsCompat.setForceDark(this.settings, WebSettingsCompat.FORCE_DARK_OFF)
-                    }
 
-                    WebSettingsCompat.setForceDarkStrategy(
-                        this.settings,
-                        WebSettingsCompat.DARK_STRATEGY_WEB_THEME_DARKENING_ONLY,
-                    )
+                        state.webSettings.androidWebSettings.let {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                safeBrowsingEnabled = it.safeBrowsingEnabled
+                            }
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                isAlgorithmicDarkeningAllowed = it.isAlgorithmicDarkeningAllowed
+                            }
+                            setBackgroundColor(state.webSettings.backgroundColor.toArgb())
+                            allowFileAccess = it.allowFileAccess
+                            textZoom = it.textZoom
+                            useWideViewPort = it.useWideViewPort
+                            standardFontFamily = it.standardFontFamily
+                            defaultFontSize = it.defaultFontSize
+                            loadsImagesAutomatically = it.loadsImagesAutomatically
+                            domStorageEnabled = it.domStorageEnabled
+                            mediaPlaybackRequiresUserGesture = it.mediaPlaybackRequiresUserGesture
+
+                            if (it.enableSandbox) {
+                                client.assetLoader =
+                                    WebViewAssetLoader
+                                        .Builder()
+                                        .addPathHandler(
+                                            it.sandboxSubdomain,
+                                            InternalStoragePathHandler(),
+                                        ).build()
+                            }
+                        }
+                    }
+                    if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
+                        val nightModeFlags =
+                            resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+                        if (nightModeFlags == Configuration.UI_MODE_NIGHT_YES) {
+                            WebSettingsCompat.setForceDark(
+                                this.settings,
+                                WebSettingsCompat.FORCE_DARK_ON,
+                            )
+                        } else {
+                            WebSettingsCompat.setForceDark(
+                                this.settings,
+                                WebSettingsCompat.FORCE_DARK_OFF,
+                            )
+                        }
+
+                        if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK_STRATEGY)) {
+                            WebSettingsCompat.setForceDarkStrategy(
+                                this.settings,
+                                WebSettingsCompat.DARK_STRATEGY_WEB_THEME_DARKENING_ONLY,
+                            )
+                        }
+                    }
+                }.also {
+                    val androidWebView = AndroidWebView(it, scope, webViewJsBridge)
+                    state.webView = androidWebView
+                    webViewJsBridge?.webView = androidWebView
                 }
-            }.also {
-                val androidWebView = AndroidWebView(it, scope, webViewJsBridge)
-                state.webView = androidWebView
-                webViewJsBridge?.webView = androidWebView
-            }
         },
         modifier = modifier,
+        onReset = {},
         onRelease = {
             onDispose(it)
         },
@@ -246,6 +274,8 @@ open class AccompanistWebViewClient : WebViewClient() {
         internal set
     private var isRedirect = false
 
+    var assetLoader: WebViewAssetLoader? = null
+
     override fun onPageStarted(
         view: WebView,
         url: String?,
@@ -259,11 +289,12 @@ open class AccompanistWebViewClient : WebViewClient() {
         state.errorsForCurrentRequest.clear()
         state.pageTitle = null
         state.lastLoadedUrl = url
+        val supportZoom = if (state.webSettings.supportZoom) "yes" else "no"
 
         // set scale level
         @Suppress("ktlint:standard:max-line-length")
         val script =
-            "var meta = document.createElement('meta');meta.setAttribute('name', 'viewport');meta.setAttribute('content', 'width=${state.webSettings.androidWebSettings.viewportWidth}, height=${state.webSettings.androidWebSettings.viewportHeight}, initial-scale=${state.webSettings.zoomLevel}, maximum-scale=10.0, minimum-scale=0.1,user-scalable=yes');document.getElementsByTagName('head')[0].appendChild(meta);"
+            "var meta = document.createElement('meta');meta.setAttribute('name', 'viewport');meta.setAttribute('content', 'width=device-width, initial-scale=${state.webSettings.zoomLevel}, maximum-scale=10.0, minimum-scale=0.1,user-scalable=$supportZoom');document.getElementsByTagName('head')[0].appendChild(meta);"
         navigator.evaluateJavaScript(script)
     }
 
@@ -311,8 +342,9 @@ open class AccompanistWebViewClient : WebViewClient() {
         if (error != null) {
             state.errorsForCurrentRequest.add(
                 WebViewError(
-                    error.errorCode,
-                    error.description.toString(),
+                    code = error.errorCode,
+                    description = error.description.toString(),
+                    isFromMainFrame = request?.isForMainFrame ?: false,
                 ),
             )
         }
@@ -329,12 +361,18 @@ open class AccompanistWebViewClient : WebViewClient() {
             isRedirect = false
             return super.shouldOverrideUrlLoading(view, request)
         }
+        val isRedirectRequest =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                request.isRedirect
+            } else {
+                false
+            }
         val webRequest =
             WebRequest(
                 request.url.toString(),
                 request.requestHeaders?.toMutableMap() ?: mutableMapOf(),
                 request.isForMainFrame,
-                request.isRedirect,
+                isRedirectRequest,
                 request.method ?: "GET",
             )
         val interceptResult =
@@ -420,6 +458,8 @@ open class AccompanistWebViewClient : WebViewClient() {
 open class AccompanistWebChromeClient : WebChromeClient() {
     open lateinit var state: WebViewState
         internal set
+    lateinit var context: Context
+        internal set
     private var lastLoadedUrl = ""
 
     override fun onReceivedTitle(
@@ -456,4 +496,69 @@ open class AccompanistWebChromeClient : WebChromeClient() {
             }
         lastLoadedUrl = view.url ?: ""
     }
+
+    override fun onPermissionRequest(request: PermissionRequest) {
+        val grantedPermissions = mutableListOf<String>()
+        KLogger.d { "onPermissionRequest received request for resources [${request.resources}]" }
+
+        request.resources.forEach { resource ->
+            var androidPermission: String? = null
+
+            when (resource) {
+                PermissionRequest.RESOURCE_AUDIO_CAPTURE -> {
+                    androidPermission = android.Manifest.permission.RECORD_AUDIO
+                }
+
+                PermissionRequest.RESOURCE_MIDI_SYSEX -> {
+                    // MIDI sysex is only available on Android M and above
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        if (state.webSettings.androidWebSettings.allowMidiSysexMessages) {
+                            grantedPermissions.add(PermissionRequest.RESOURCE_MIDI_SYSEX)
+                        }
+                    }
+                }
+
+                PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID -> {
+                    if (state.webSettings.androidWebSettings.allowProtectedMedia) {
+                        grantedPermissions.add(PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID)
+                    }
+                }
+
+                PermissionRequest.RESOURCE_VIDEO_CAPTURE -> {
+                    androidPermission = android.Manifest.permission.CAMERA
+                }
+            }
+
+            if (androidPermission != null) {
+                if (ContextCompat.checkSelfPermission(
+                        context,
+                        androidPermission,
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    grantedPermissions.add(resource)
+                    KLogger.d {
+                        "onPermissionRequest permission [$androidPermission] was already granted for resource [$resource]"
+                    }
+                } else {
+                    KLogger.w {
+                        "onPermissionRequest didn't find already granted permission [$androidPermission] for resource [$resource]"
+                    }
+                }
+            }
+        }
+
+        if (grantedPermissions.isNotEmpty()) {
+            request.grant(grantedPermissions.toTypedArray())
+            KLogger.d { "onPermissionRequest granted permissions: ${grantedPermissions.joinToString()}" }
+        } else {
+            request.deny()
+            KLogger.d { "onPermissionRequest denied permissions: ${request.resources}" }
+        }
+    }
+
+    override fun getDefaultVideoPoster(): Bitmap? =
+        when {
+            state.webSettings.androidWebSettings.hideDefaultVideoPoster -> createBitmap(50, 50)
+            else -> super.getDefaultVideoPoster()
+        }
 }
