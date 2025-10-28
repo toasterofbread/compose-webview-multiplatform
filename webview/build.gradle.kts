@@ -3,7 +3,9 @@
 import org.jetbrains.dokka.gradle.DokkaTask
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpackConfig
+import java.net.URI
 import java.net.URL
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -111,6 +113,35 @@ fun org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget.setUpiOSObserver()
     compilations.getByName("main") {
         cinterops.create("observer") {
             compilerOpts("-F $path")
+        }
+    }
+}
+
+fun Project.getLocalProperties(): Properties {
+    val localProperties: Properties = Properties()
+    val localPropertiesFile: File = rootProject.file("local.properties")
+    if (localPropertiesFile.isFile) {
+        localProperties.load(localPropertiesFile.reader())
+    }
+    return localProperties
+}
+
+publishing {
+    repositories {
+        val localProperties: Properties = getLocalProperties()
+
+        val username: String? =
+            localProperties["publishing.syksh.user"] as String?
+        val password: String? =
+            localProperties["publishing.syksh.key"] as String?
+
+        maven {
+            name = "SykSh"
+            url = URI("https://maven.syk.sh/releases")
+            credentials(PasswordCredentials::class) {
+                this.username = username
+                this.password = password
+            }
         }
     }
 }
